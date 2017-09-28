@@ -4592,7 +4592,7 @@ static int rd_kafka_broker_thread_main (void *arg) {
 	rd_kafka_t *rk = rkb->rkb_rk;
 
         rd_snprintf(rd_kafka_thread_name, sizeof(rd_kafka_thread_name),
-		    "%s", rkb->rkb_name);
+		    "rdkfbroker%hu", (unsigned short) rkb->rkb_nodeid);
 
 	(void)rd_atomic32_add(&rd_kafka_thread_cnt_curr, 1);
 
