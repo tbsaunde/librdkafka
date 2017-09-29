@@ -1134,7 +1134,8 @@ static int rd_kafka_thread_main (void *arg) {
 	rd_kafka_timer_t tmr_stats_emit = RD_ZERO_INIT;
 	rd_kafka_timer_t tmr_metadata_refresh = RD_ZERO_INIT;
 
-        rd_snprintf(rd_kafka_thread_name, sizeof(rd_kafka_thread_name), "main");
+        rd_snprintf(rd_kafka_thread_name, sizeof(rd_kafka_thread_name),
+                    "librdkafka:main");
 
 	(void)rd_atomic32_add(&rd_kafka_thread_cnt_curr, 1);
 
