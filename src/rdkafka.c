@@ -89,9 +89,15 @@ int rd_kafka_thread_cnt (void) {
 /**
  * Current thread's name (TLS)
  */
-char RD_TLS rd_kafka_thread_name[64] = "app";
+char RD_TLS rd_kafka_thread_name[16] = "app";
 
-
+void rd_kafka_set_thread_name (const char *name) {
+        assert (strlen (name) <= 15);
+#ifdef __linux__
+        pthread_setname_np(pthread_self(), name);
+#endif
+        strcpy(rd_kafka_thread_name, name);
+}
 
 static void rd_kafka_global_init (void) {
 #if ENABLE_SHAREDPTR_DEBUG
