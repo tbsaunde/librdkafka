@@ -4590,9 +4590,11 @@ static void rd_kafka_broker_consumer_serve (rd_kafka_broker_t *rkb) {
 static int rd_kafka_broker_thread_main (void *arg) {
 	rd_kafka_broker_t *rkb = arg;
 	rd_kafka_t *rk = rkb->rkb_rk;
+    char thr_name[16];
 
-        rd_snprintf(rd_kafka_thread_name, sizeof(rd_kafka_thread_name),
+        rd_snprintf(thr_name, sizeof(thr_name),
 		    "rdkfbroker%hu", (unsigned short) rkb->rkb_nodeid);
+        rd_kafka_set_thread_name(thr_name);
 
 	(void)rd_atomic32_add(&rd_kafka_thread_cnt_curr, 1);
 
