@@ -327,45 +327,43 @@ rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
 
 	mtx_lock(&rkq->rkq_lock);
 
-        if (!(fwdq = rd_kafka_q_fwd_get(rkq, 0))) {
-                do {
-                        rd_ts_t pre;
-
-                        /* pop an op off the queue if possible */
-                        rko = rd_kafka_q_pop_nowait(rkq, version, cb_type,
-                                                    callback, opaque);
-                        if (rko)
-                            break;
-
-                        /* No op, wait for one */
-                        pre = rd_clock();
-			if (cnd_timedwait_ms(&rkq->rkq_cond,
-					     &rkq->rkq_lock,
-					     timeout_ms) ==
-			    thrd_timedout) {
-				mtx_unlock(&rkq->rkq_lock);
-				return NULL;
-			}
-			/* Remove spent time */
-			timeout_ms -= (int) (rd_clock()-pre) / 1000;
-			if (timeout_ms < 0)
-				timeout_ms = RD_POLL_NOWAIT;
-
-		} while (timeout_ms != RD_POLL_NOWAIT);
-
-                mtx_unlock(&rkq->rkq_lock);
-
-        } else {
+        if ((fwdq = rd_kafka_q_fwd_get(rkq, 0))) {
                 /* Since the q_pop may block we need to release the parent
                  * queue's lock. */
                 mtx_unlock(&rkq->rkq_lock);
 		rko = rd_kafka_q_pop_serve(fwdq, timeout_ms, version,
 					   cb_type, callback, opaque);
                 rd_kafka_q_destroy(fwdq);
+
+                return rko;
         }
 
+        do {
+            rd_ts_t pre;
 
-	return rko;
+            /* pop an op off the queue if possible */
+                rko = rd_kafka_q_pop_nowait(rkq, version, cb_type, callback,
+                                            opaque);
+                if (rko)
+                        break;
+
+                /* No op, wait for one */
+                pre = rd_clock();
+                if (cnd_timedwait_ms(&rkq->rkq_cond, &rkq->rkq_lock,
+                                     timeout_ms) == thrd_timedout) {
+                        mtx_unlock(&rkq->rkq_lock);
+                        return NULL;
+                }
+                /* Remove spent time */
+                timeout_ms -= (int) (rd_clock()-pre) / 1000;
+                if (timeout_ms < 0)
+                        timeout_ms = RD_POLL_NOWAIT;
+
+        } while (timeout_ms != RD_POLL_NOWAIT);
+
+        mtx_unlock(&rkq->rkq_lock);
+
+        return rko;
 }
 
 rd_kafka_op_t *rd_kafka_q_pop (rd_kafka_q_t *rkq, int timeout_ms,
