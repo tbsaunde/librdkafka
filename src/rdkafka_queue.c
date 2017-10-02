@@ -273,6 +273,34 @@ static RD_INLINE rd_kafka_op_t *rd_kafka_op_filter (rd_kafka_q_t *rkq,
  * Locality: any thread.
  */
 
+static rd_kafka_op_t *
+rd_kafka_q_pop_nowait (rd_kafka_q_t *rkq, int32_t version, int cb_type,
+                       int (*callback) (rd_kafka_t *rk, rd_kafka_op_t *rko,
+                                        int cb_type, void *opaque),
+                       void *opaque) {
+    rd_kafka_op_t *rko;
+
+        while ((rko = TAILQ_FIRST(&rkq->rkq_q))) {
+                rko = rd_kafka_op_filter(rkq, rko, version);
+                if (!rko)
+                    continue;
+
+                /* Proper versioned op */
+                rd_kafka_q_deq0(rkq, rko);
+
+                /* Ops with callbacks are considered handled
+                 * and we move on to the next op, if any.
+                 * Ops w/o callbacks are returned immediately */
+                if (rd_kafka_op_handle(rkq->rkq_rk, rko, cb_type, opaque,
+                                       callback))
+                        continue;
+
+                return rko; /* Proper op, handle below. */
+        }
+
+        return NULL;
+}
+
 
 /**
  * Serve q like rd_kafka_q_serve() until an op is found that can be returned
@@ -303,26 +331,11 @@ rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
                 do {
                         rd_ts_t pre;
 
-                        /* Filter out outdated ops */
-                retry:
-                        while ((rko = TAILQ_FIRST(&rkq->rkq_q)) &&
-                               !(rko = rd_kafka_op_filter(rkq, rko, version)))
-                                ;
-
-                        if (rko) {
-                                /* Proper versioned op */
-                                rd_kafka_q_deq0(rkq, rko);
-
-                                /* Ops with callbacks are considered handled
-                                 * and we move on to the next op, if any.
-                                 * Ops w/o callbacks are returned immediately */
-                                if (rd_kafka_op_handle(rkq->rkq_rk, rko,
-                                                       cb_type, opaque,
-                                                       callback))
-                                        goto retry;
-                                else
-                                        break; /* Proper op, handle below. */
-                        }
+                        /* pop an op off the queue if possible */
+                        rko = rd_kafka_q_pop_nowait(rkq, version, cb_type,
+                                                    callback, opaque);
+                        if (rko)
+                            break;
 
                         /* No op, wait for one */
                         pre = rd_clock();
