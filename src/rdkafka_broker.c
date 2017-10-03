@@ -3213,11 +3213,16 @@ static void rd_kafka_broker_op_serve (rd_kafka_broker_t *rkb,
  */
 static void rd_kafka_broker_serve (rd_kafka_broker_t *rkb, int timeout_ms) {
 	rd_kafka_op_t *rko;
+    struct rd_kafka_op_tailq ops;
 	rd_ts_t now;
 
 	/* Serve broker ops */
-        while ((rko = rd_kafka_q_pop(rkb->rkb_ops, timeout_ms, 0)))
-                rd_kafka_broker_op_serve(rkb, rko);
+    rd_kafka_q_drain(rkb->rkb_ops, timeout_ms, &ops);
+    for (rko = TAILQ_FIRST(&ops); rko;) {
+        rd_kafka_op_t *next = TAILQ_NEXT(rko, rko_link);
+        rd_kafka_broker_op_serve(rkb, rko);
+        rko = next;
+    }
 
 	/* Serve IO events */
         if (likely(rkb->rkb_transport != NULL))
