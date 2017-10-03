@@ -601,7 +601,7 @@ rd_kafka_replyq_enq (rd_kafka_replyq_t *replyq, rd_kafka_op_t *rko,
 
 
 rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
-				     int32_t version, int cb_type,
+				     int32_t version, int max_cnt, int cb_type,
 				     int (*callback) (rd_kafka_t *rk,
 						      rd_kafka_op_t *rko,
 						      int cb_type,

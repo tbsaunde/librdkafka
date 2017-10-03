@@ -274,11 +274,13 @@ static RD_INLINE rd_kafka_op_t *rd_kafka_op_filter (rd_kafka_q_t *rkq,
  */
 
 static rd_kafka_op_t *
-rd_kafka_q_pop_nowait (rd_kafka_q_t *rkq, int32_t version, int cb_type,
+rd_kafka_q_pop_nowait (rd_kafka_q_t *rkq, int32_t version, int max_cnt,
+                       int cb_type,
                        int (*callback) (rd_kafka_t *rk, rd_kafka_op_t *rko,
                                         int cb_type, void *opaque),
-                       void *opaque) {
+                       void *opaque, struct rd_kafka_op_tailq *ops) {
     rd_kafka_op_t *rko;
+    int cnt = 0;
 
         while ((rko = TAILQ_FIRST(&rkq->rkq_q))) {
                 rko = rd_kafka_op_filter(rkq, rko, version);
@@ -295,28 +297,22 @@ rd_kafka_q_pop_nowait (rd_kafka_q_t *rkq, int32_t version, int cb_type,
                                        callback))
                         continue;
 
-                return rko; /* Proper op, handle below. */
+                TAILQ_INSERT_TAIL(ops, rko, rko_link);
+                cnt++;
+                if (cnt == max_cnt)
+                    break;
         }
 
-        return NULL;
+        return TAILQ_FIRST(ops);
 }
 
-
-/**
- * Serve q like rd_kafka_q_serve() until an op is found that can be returned
- * as an event to the application.
- *
- * @returns the first event:able op, or NULL on timeout.
- *
- * Locality: any thread
- */
-rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
-				     int32_t version, int cb_type,
+static rd_kafka_op_t *rd_kafka_q_drain_serve (rd_kafka_q_t *rkq, int timeout_ms,
+				     int32_t version, int max_cnt, int cb_type,
 				     int (*callback) (rd_kafka_t *rk,
 						      rd_kafka_op_t *rko,
 						      int cb_type,
 						      void *opaque),
-				     void *opaque) {
+				     void *opaque, struct rd_kafka_op_tailq *ops) {
 	rd_kafka_op_t *rko;
         rd_kafka_q_t *fwdq;
 
@@ -331,8 +327,8 @@ rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
                 /* Since the q_pop may block we need to release the parent
                  * queue's lock. */
                 mtx_unlock(&rkq->rkq_lock);
-		rko = rd_kafka_q_pop_serve(fwdq, timeout_ms, version,
-					   cb_type, callback, opaque);
+		rko = rd_kafka_q_drain_serve(fwdq, timeout_ms, version, max_cnt,
+					   cb_type, callback, opaque, ops);
                 rd_kafka_q_destroy(fwdq);
 
                 return rko;
@@ -342,8 +338,8 @@ rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
             rd_ts_t pre;
 
             /* pop an op off the queue if possible */
-                rko = rd_kafka_q_pop_nowait(rkq, version, cb_type, callback,
-                                            opaque);
+                rko = rd_kafka_q_pop_nowait(rkq, version, max_cnt, cb_type,
+                                            callback, opaque, ops);
                 if (rko)
                         break;
 
@@ -366,10 +362,35 @@ rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
         return rko;
 }
 
+void rd_kafka_q_drain (rd_kafka_q_t *rkq, int timeout_ms, struct rd_kafka_op_tailq *ops)
+{
+    rd_kafka_q_drain_serve(rkq, timeout_ms, 0, INT_MAX, _Q_CB_RETURN, NULL, NULL, ops);
+}
+
+
+/**
+ * Serve q like rd_kafka_q_serve() until an op is found that can be returned
+ * as an event to the application.
+ *
+ * @returns the first event:able op, or NULL on timeout.
+ *
+ * Locality: any thread
+ */
+rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
+				     int32_t version, int max_cnt, int cb_type,
+				     int (*callback) (rd_kafka_t *rk,
+						      rd_kafka_op_t *rko,
+						      int cb_type,
+						      void *opaque),
+				     void *opaque) {
+    struct rd_kafka_op_tailq ops = TAILQ_HEAD_INITIALIZER(ops);
+    return rd_kafka_q_drain_serve(rkq, timeout_ms, version, max_cnt, cb_type, callback, opaque, &ops);
+}
+
 rd_kafka_op_t *rd_kafka_q_pop (rd_kafka_q_t *rkq, int timeout_ms,
                                int32_t version) {
-	return rd_kafka_q_pop_serve(rkq, timeout_ms, version, _Q_CB_RETURN,
-                                    NULL, NULL);
+	return rd_kafka_q_pop_serve(rkq, timeout_ms, version, 1,
+                                _Q_CB_RETURN, NULL, NULL);
 }
 
 

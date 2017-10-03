@@ -2536,7 +2536,7 @@ int rd_kafka_poll (rd_kafka_t *rk, int timeout_ms) {
 
 rd_kafka_event_t *rd_kafka_queue_poll (rd_kafka_queue_t *rkqu, int timeout_ms) {
 	rd_kafka_op_t *rko;
-	rko = rd_kafka_q_pop_serve(rkqu->rkqu_q, timeout_ms, 0,
+	rko = rd_kafka_q_pop_serve(rkqu->rkqu_q, timeout_ms, 0, 1,
 				   _Q_CB_EVENT, rd_kafka_poll_cb, NULL);
 	if (!rko)
 		return NULL;

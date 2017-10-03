@@ -490,7 +490,7 @@ rd_kafka_commit_queue (rd_kafka_t *rk,
 	if (!rkqu) {
                 rd_kafka_op_t *rko =
                         rd_kafka_q_pop_serve(rkq, RD_POLL_INFINITE,
-                                             0, _Q_CB_FORCE_RETURN,
+                                             0, 1, _Q_CB_FORCE_RETURN,
                                              NULL, NULL);
 		if (!rko)
 			err = RD_KAFKA_RESP_ERR__TIMED_OUT;
