@@ -1290,8 +1290,15 @@ int main (int argc, char **argv) {
 			cnt.msgs++;
 			cnt.bytes += msgsize;
 
-                        if (rate_sleep)
+                        if (rate_sleep) {
+                            if (rate_sleep <= 100) {
+                                uint64_t time = wall_clock() + rate_sleep;
+                                while (time < wall_clock())
+                                    ;
+                            } else {
                                 usleep(rate_sleep);
+                            }
+                        }
 
 			/* Must poll to handle delivery reports */
 			rd_kafka_poll(rk, 0);
