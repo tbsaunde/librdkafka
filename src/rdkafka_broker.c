@@ -3213,7 +3213,7 @@ static void rd_kafka_broker_op_serve (rd_kafka_broker_t *rkb,
  */
 static void rd_kafka_broker_serve (rd_kafka_broker_t *rkb, int timeout_ms) {
 	rd_kafka_op_t *rko;
-    struct rd_kafka_op_tailq ops;
+    struct rd_kafka_op_tailq ops = TAILQ_HEAD_INITIALIZER(ops);
 	rd_ts_t now;
 
 	/* Serve broker ops */
