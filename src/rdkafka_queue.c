@@ -371,7 +371,8 @@ retry:
 
 		/* No op, wait for one */
 		pre = rd_clock();
-		if (cnd_timedwait_ms(&rkq->rkq_cond,
+		if (timeout_ms == 0 ||
+				cnd_timedwait_ms(&rkq->rkq_cond,
 				     &rkq->rkq_lock,
 				     timeout_ms) == thrd_timedout) {
 			mtx_unlock(&rkq->rkq_lock);
