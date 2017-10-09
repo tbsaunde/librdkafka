@@ -327,65 +327,64 @@ rd_kafka_op_t *rd_kafka_q_pop_serve (rd_kafka_q_t *rkq, int timeout_ms,
 	mtx_lock(&rkq->rkq_lock);
 
         rd_kafka_yield_thread = 0;
-        if (!(fwdq = rd_kafka_q_fwd_get(rkq, 0))) {
-                do {
-                        rd_kafka_op_res_t res;
-                        rd_ts_t pre;
+        if ((fwdq = rd_kafka_q_fwd_get(rkq, 0))) {
+		/* Since the q_pop may block we need to release the parent
+		 * queue's lock. */
+		mtx_unlock(&rkq->rkq_lock);
+		rko = rd_kafka_q_pop_serve(fwdq, timeout_ms, version,
+			       	           cb_type, callback, opaque);
+		rd_kafka_q_destroy(fwdq);
 
-                        /* Filter out outdated ops */
-                retry:
-                        while ((rko = TAILQ_FIRST(&rkq->rkq_q)) &&
-                               !(rko = rd_kafka_op_filter(rkq, rko, version)))
-                                ;
+		return rko;
+	}
 
-                        if (rko) {
-                                /* Proper versioned op */
-                                rd_kafka_q_deq0(rkq, rko);
+	do {
+		rd_kafka_op_res_t res;
+		rd_ts_t pre;
 
-                                /* Ops with callbacks are considered handled
-                                 * and we move on to the next op, if any.
-                                 * Ops w/o callbacks are returned immediately */
-                                res = rd_kafka_op_handle(rkq->rkq_rk, rkq, rko,
-                                                         cb_type, opaque,
-                                                         callback);
-                                if (res == RD_KAFKA_OP_RES_HANDLED)
-                                        goto retry; /* Next op */
-                                else if (unlikely(res ==
-                                                  RD_KAFKA_OP_RES_YIELD)) {
-                                        /* Callback yielded, unroll */
-                                        mtx_unlock(&rkq->rkq_lock);
-                                        return NULL;
-                                } else
-                                        break; /* Proper op, handle below. */
-                        }
+		/* Filter out outdated ops */
+retry:
+		while ((rko = TAILQ_FIRST(&rkq->rkq_q)) &&
+		       !(rko = rd_kafka_op_filter(rkq, rko, version)))
+			;
 
-                        /* No op, wait for one */
-                        pre = rd_clock();
-			if (cnd_timedwait_ms(&rkq->rkq_cond,
-					     &rkq->rkq_lock,
-					     timeout_ms) ==
-			    thrd_timedout) {
+		if (rko) {
+			/* Proper versioned op */
+			rd_kafka_q_deq0(rkq, rko);
+
+			/* Ops with callbacks are considered handled
+			 * and we move on to the next op, if any.
+			 * Ops w/o callbacks are returned immediately */
+			res = rd_kafka_op_handle(rkq->rkq_rk, rkq, rko,
+					cb_type, opaque,
+					callback);
+			if (res == RD_KAFKA_OP_RES_HANDLED)
+				goto retry; /* Next op */
+			else if (unlikely(res ==
+						RD_KAFKA_OP_RES_YIELD)) {
+				/* Callback yielded, unroll */
 				mtx_unlock(&rkq->rkq_lock);
 				return NULL;
-			}
-			/* Remove spent time */
-			timeout_ms -= (int) (rd_clock()-pre) / 1000;
-			if (timeout_ms < 0)
-				timeout_ms = RD_POLL_NOWAIT;
+			} else
+				break; /* Proper op, handle below. */
+		}
 
-		} while (timeout_ms != RD_POLL_NOWAIT);
+		/* No op, wait for one */
+		pre = rd_clock();
+		if (cnd_timedwait_ms(&rkq->rkq_cond,
+				     &rkq->rkq_lock,
+				     timeout_ms) == thrd_timedout) {
+			mtx_unlock(&rkq->rkq_lock);
+			return NULL;
+		}
+		/* Remove spent time */
+		timeout_ms -= (int) (rd_clock()-pre) / 1000;
+		if (timeout_ms < 0)
+			timeout_ms = RD_POLL_NOWAIT;
+
+	} while (timeout_ms != RD_POLL_NOWAIT);
 
                 mtx_unlock(&rkq->rkq_lock);
-
-        } else {
-                /* Since the q_pop may block we need to release the parent
-                 * queue's lock. */
-                mtx_unlock(&rkq->rkq_lock);
-		rko = rd_kafka_q_pop_serve(fwdq, timeout_ms, version,
-					   cb_type, callback, opaque);
-                rd_kafka_q_destroy(fwdq);
-        }
-
 
 	return rko;
 }
